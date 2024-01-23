@@ -1,14 +1,11 @@
 from typing import Callable, Optional, Dict, Any
-from typing import ParamSpec, TypeVar
 
 import inspect
+import functools
 from functools import wraps
 from stubb.parser import generate_gbnf_grammar_from_pydantic_models
 from llama_cpp.llama_grammar import LlamaGrammar
-
-
-T = TypeVar("T")
-P = ParamSpec("P")
+from llama_cpp.llama import Llama
 
 """
 TODO:
@@ -20,12 +17,20 @@ TODO:
 
 """
 
+# Type for the model function, which just returns a Llama model
+LlamaModelFn = Callable[[], Llama]
+
+
+@functools.lru_cache(maxsize=128)
+def cached_model_fn(model_fn: LlamaModelFn) -> Llama:
+    return model_fn()
+
 
 def llm_function(
     func_: Callable = None,
     *,
     model_kwargs: Optional[Dict[str, Any]] = None,
-    model_fn: Optional[Callable] = None,
+    model_fn: Optional[LlamaModelFn] = None,
     model=None,
 ):
     """Decorator for conformable functions.
@@ -44,7 +49,7 @@ def llm_function(
         return "hi"
     """
 
-    def function_wrapper(func: Callable[P, T]) -> Callable[P, T]:
+    def function_wrapper(func):
         signature = inspect.signature(func)
 
         @wraps(func)
@@ -65,6 +70,11 @@ def llm_function(
             if "return_type" in with_args.arguments:
                 return_type = with_args.arguments["return_type"]
 
+            if return_type is inspect.Signature.empty or return_type is None:
+                raise ValueError(
+                    "To use the llm_function decorator, you must specify a return type."
+                )
+
             return_value = func(**with_args.arguments)
             print("return type: ", return_type)
             print("return value: ", return_value)
@@ -75,9 +85,9 @@ def llm_function(
                 grammar_str = generate_gbnf_grammar_from_pydantic_models([return_type])
                 grammar = LlamaGrammar.from_string(grammar_str)
                 resp = model(doc, grammar=grammar, max_tokens=-1)
-                json_output = resp['choices'][0]['text']
+                json_output = resp["choices"][0]["text"]
                 json_output = json_output.replace("\n", "")
-                parsed = return_type.model_validate_json(resp['choices'][0]['text'])
+                parsed = return_type.model_validate_json(resp["choices"][0]["text"])
 
             return resp, parsed
 
@@ -94,9 +104,9 @@ if __name__ == "__main__":
 
     from pydantic import BaseModel
 
-
     class StructuredName(BaseModel):
         """What should I do with this docstring?"""
+
         city: str
         state_code: str
 

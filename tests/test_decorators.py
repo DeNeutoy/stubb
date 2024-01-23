@@ -1,4 +1,3 @@
-
 import pytest
 import os
 from pydantic import BaseModel
@@ -12,10 +11,11 @@ import stubb
     reason="Skipping this test on Github Actions",
 )
 def test_basic_parsing():
-
     from llama_cpp.llama import Llama
+
     class StructuredName(BaseModel):
         """What should I do with this docstring?"""
+
         city: str
         state_code: str
 
@@ -28,3 +28,12 @@ def test_basic_parsing():
     response, parsed_model = my_func2("NYC.")
     assert parsed_model.city == "New York"
     assert parsed_model.state_code == "NY"
+
+
+def test_llm_function_requires_type():
+    @stubb.llm_function
+    def my_func2(placename: str) -> None:
+        """Test"""
+
+    with pytest.raises(ValueError):
+        my_func2("test")
