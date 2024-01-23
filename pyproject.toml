@@ -1,0 +1,28 @@
+[project]
+name = "stubb"
+version = "0.1"
+description = "Structured LLM outputs and evals"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{name = "Mark Neumann"}]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "License :: OSI Approved :: Apache Software License"
+]
+dependencies = [
+
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+Homepage = "https://github.com/deneutoy/stubb"
+Changelog = "https://github.com/deneutoy/stubb/releases"
+Issues = "https://github.com/deneutoy/stubb/issues"
+CI = "https://github.com/deneutoy/stubb/actions"
+
+
+[project.optional-dependencies]
+test = ["pytest"]
