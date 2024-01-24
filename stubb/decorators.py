@@ -82,7 +82,7 @@ def llm_function(
             resp = None
             parsed = None
             if model:
-                grammar_str = generate_gbnf_grammar_from_pydantic_models([return_type])
+                grammar_str = generate_gbnf_grammar_from_pydantic_models(return_type)
                 grammar = LlamaGrammar.from_string(grammar_str)
                 resp = model(doc, grammar=grammar, max_tokens=-1)
                 json_output = resp["choices"][0]["text"]

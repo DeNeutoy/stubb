@@ -38,6 +38,6 @@ def test_pydantic_model_generation():
         LiteralType,
         OptionalType,
     ]:
-        grammar = generate_gbnf_grammar_from_pydantic_models([model])
+        grammar = generate_gbnf_grammar_from_pydantic_models(model)
         print(grammar)
         assert grammar is not None

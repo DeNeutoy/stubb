@@ -29,6 +29,7 @@ class PydanticDataType(Enum):
         OBJECT (str): Represents an object data type.
         ARRAY (str): Represents an array data type.
         ENUM (str): Represents an enum data type.
+        CUSTOM_CLASS (str): Represents a custom class data type.
     """
 
     STRING = "string"
@@ -40,6 +41,7 @@ class PydanticDataType(Enum):
     ENUM = "enum"
     ANY = "any"
     NULL = "null"
+    CUSTOM_CLASS = "custom-class"
     CUSTOM_DICT = "custom-dict"
     SET = "set"
 
@@ -71,6 +73,8 @@ def map_pydantic_type_to_gbnf(pydantic_type: Type[Any]) -> str:
     elif get_origin(pydantic_type) == Optional:
         element_type = get_args(pydantic_type)[0]
         return f"optional-{map_pydantic_type_to_gbnf(element_type)}"
+    elif isclass(pydantic_type):
+        return f"{PydanticDataType.CUSTOM_CLASS.value}-{format_model_and_field_name(pydantic_type.__name__)}"
     elif get_origin(pydantic_type) == dict:
         key_type, value_type = get_args(pydantic_type)
         return f"custom-dict-key-type-{format_model_and_field_name(map_pydantic_type_to_gbnf(key_type))}-value-type-{format_model_and_field_name(map_pydantic_type_to_gbnf(value_type))}"
@@ -95,6 +99,48 @@ def generate_list_rule(element_type):
     element_rule = map_pydantic_type_to_gbnf(element_type)
     list_rule = rf'{rule_name} ::= "["  {element_rule} (","  {element_rule})* "]"'
     return list_rule
+
+
+def get_members_structure(cls, rule_name):
+    if issubclass(cls, Enum):
+        # Handle Enum types
+        members = [
+            f'"\\"{member.value}\\""' for name, member in cls.__members__.items()
+        ]
+        return f"{cls.__name__.lower()} ::= " + " | ".join(members)
+    if cls.__annotations__ and cls.__annotations__ != {}:
+        result = f'{rule_name} ::= "{{"'
+        type_list_rules = []
+        # Modify this comprehension
+        members = [
+            f'  "\\"{name}\\"" ":"  {map_pydantic_type_to_gbnf(param_type)}'
+            for name, param_type in cls.__annotations__.items()
+            if name != "self"
+        ]
+
+        result += '"," '.join(members)
+        result += '  "}"'
+        return result, type_list_rules
+    elif rule_name == "custom-class-any":
+        result = f"{rule_name} ::= "
+        result += "value"
+        type_list_rules = []
+        return result, type_list_rules
+    else:
+        init_signature = inspect.signature(cls.__init__)
+        parameters = init_signature.parameters
+        result = f'{rule_name} ::=  "{{"'
+        type_list_rules = []
+        # Modify this comprehension too
+        members = [
+            f'  "\\"{name}\\"" ":"  {map_pydantic_type_to_gbnf(param.annotation)}'
+            for name, param in parameters.items()
+            if name != "self" and param.annotation != inspect.Parameter.empty
+        ]
+
+        result += '", "'.join(members)
+        result += '  "}"'
+        return result, type_list_rules
 
 
 def generate_gbnf_rule_for_type(
@@ -152,15 +198,9 @@ def generate_gbnf_rule_for_type(
         rules.append(array_rule)
         gbnf_type, rules = model_name + "-" + field_name, rules
 
-
-    elif issubclass(field_type, Enum):
-        # Handle Enum types
-        members = [
-            f'"\\"{member.value}\\""' for name, member in field_type.__members__.items()
-        ]
-        additional_rules = f"{field_type.__name__.lower()} ::= " + " | ".join(members)
-        rules.append(additional_rules)
-
+    elif gbnf_type.startswith("custom-class-"):
+        nested_model_rules, field_types = get_members_structure(field_type, gbnf_type)
+        rules.append(nested_model_rules)
     elif gbnf_type.startswith("custom-dict-"):
         key_type, value_type = get_args(field_type)
 
@@ -324,7 +364,7 @@ def generate_gbnf_grammar(
     return all_rules
 
 
-def get_primitive_grammar(grammar: str) -> str:
+def get_primitive_grammar(grammar):
     """
     Returns the needed GBNF primitive grammar for a given GBNF grammar string.
     Args:
@@ -353,7 +393,23 @@ ws ::= ([ \t\n] ws)?
 float ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)? ws
 integer ::= [0-9]+"""
 
-    return "\n" + "\n".join(additional_grammar) + primitive_grammar
+    any_block = ""
+    if "custom-class-any" in grammar:
+        any_block = """
+value ::= object | array | string | number | boolean | null
+object ::=
+  "{" ws (
+            string ":" ws value
+    ("," ws string ":" ws value)*
+  )? "}" ws
+array  ::=
+  "[" ws (
+            value
+    ("," ws value)*
+  )? "]" ws
+number ::= integer | float"""
+
+    return "\n" + "\n".join(additional_grammar) + any_block + primitive_grammar
 
 
 def remove_empty_lines(string):
@@ -371,42 +427,29 @@ def remove_empty_lines(string):
 
 
 def generate_gbnf_grammar_from_pydantic_models(
-    models: List[Type[BaseModel]],
+    model: Type[BaseModel],
     list_of_outputs: bool = False,
 ) -> str:
     """
     Generate GBNF Grammar from Pydantic Models.
-    This method takes a list of Pydantic models and uses them to generate a GBNF grammar string. The generated grammar string can be used for parsing and validating data using the generated
-    * grammar.
     Parameters:
-    models (List[Type[BaseModel]]): A list of Pydantic models to generate the grammar from.
+    model (Type[BaseModel]): A Pydantic models to generate the grammar from.
     list_of_outputs (str, optional): Allows a list of output objects
     Returns:
     str: The generated GBNF grammar string.
-    Examples:
-        models = [UserModel, PostModel]
-        grammar = generate_gbnf_grammar_from_pydantic(models)
-        print(grammar)
-        # Output:
-        # root ::= UserModel | PostModel
-        # ...
     """
-    processed_models = set()
-    all_rules = []
-    created_rules = {}
-    for model in models:
-        model_rules = generate_gbnf_grammar(model, processed_models, created_rules)
-        all_rules.extend(model_rules)
+    model_rules = generate_gbnf_grammar(model, processed_models=set(), created_rules={})
 
+
+    root_model_name = format_model_and_field_name(model.__name__)
     if list_of_outputs:
         root_rule = (
             r'root ::= ws "["  grammar-models (","  grammar-models)*  "]"' + "\n"
         )
     else:
         root_rule = r"root ::= ws grammar-models" + "\n"
-    root_rule += "grammar-models ::= " + " | ".join(
-        [format_model_and_field_name(model.__name__) for model in models]
-    )
-    all_rules.insert(0, root_rule)
-    final_grammar = "\n".join(all_rules)
+    root_rule += "grammar-models ::= " + root_model_name
+
+    model_rules.insert(0, root_rule)
+    final_grammar = "\n".join(model_rules)
     return remove_empty_lines(final_grammar + get_primitive_grammar(final_grammar))
