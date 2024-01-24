@@ -34,3 +34,29 @@ def generate(model: Llama, prompt: str, return_type: T, **kwargs) -> T:
 
     resp = result["choices"][0]["text"]
     return return_type.model_validate_json(resp)
+
+
+def extract(data: str, target_type: T, model: Llama, call_kwargs) -> T:
+    """Extract a pydantic model from a string.
+
+    Args:
+        data (str): The string to extract from.
+        return_type (T): The type of the return value.
+
+    Returns:
+        T: The extracted pydantic model.
+    """
+
+
+def classify(data: str, target_type: T, model: Llama, call_kwargs) -> T:
+    """Classify a string into a pydantic model.
+
+    Args:
+        data (str): The string to classify.
+        return_type (T): The type of the return value.
+
+    Returns:
+        T: The classified pydantic model.
+    """
+
+
