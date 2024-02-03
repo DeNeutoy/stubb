@@ -54,3 +54,7 @@ To run the tests:
 ```bash
 pytest
 ```
+
+
+# Watch for Ollama to merge one of these PRs.
+https://github.com/ollama/ollama/pulls?q=is%3Apr+is%3Aopen+grammar

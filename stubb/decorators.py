@@ -3,7 +3,7 @@ from typing import Callable, Optional, Dict, Any
 import inspect
 import functools
 from functools import wraps
-from stubb.parser import generate_gbnf_grammar_from_pydantic_models
+from stubb.parser import type_to_grammar
 from llama_cpp.llama_grammar import LlamaGrammar
 from llama_cpp.llama import Llama
 
@@ -33,7 +33,7 @@ def llm_function(
     model_fn: Optional[LlamaModelFn] = None,
     model=None,
 ):
-    """Decorator for conformable functions.
+    """The Stubb llm decorator.
 
     Usage:
 
@@ -82,7 +82,7 @@ def llm_function(
             resp = None
             parsed = None
             if model:
-                grammar_str = generate_gbnf_grammar_from_pydantic_models(return_type)
+                grammar_str = type_to_grammar(return_type)
                 grammar = LlamaGrammar.from_string(grammar_str)
                 resp = model(doc, grammar=grammar, max_tokens=-1)
                 json_output = resp["choices"][0]["text"]
