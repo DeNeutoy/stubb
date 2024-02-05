@@ -6,7 +6,7 @@ from functools import wraps
 from stubb.parser import type_to_grammar
 from llama_cpp.llama_grammar import LlamaGrammar
 from llama_cpp.llama import Llama
-
+import pathlib
 """
 TODO:
 - default llama model creation functions
@@ -26,12 +26,19 @@ def cached_model_fn(model_fn: LlamaModelFn) -> Llama:
     return model_fn()
 
 
+# relative path to this file
+def default_model_fn() -> Llama:
+
+    this_file = pathlib.Path(__file__).parent
+    llm = Llama(str(this_file / "../models/phi-2.Q6_K.gguf"))
+    return llm
+
+
 def llm_function(
     func_: Callable = None,
     *,
     model_kwargs: Optional[Dict[str, Any]] = None,
-    model_fn: Optional[LlamaModelFn] = None,
-    model=None,
+    model_fn: Optional[LlamaModelFn] = default_model_fn,
 ):
     """The Stubb llm decorator.
 
@@ -48,6 +55,8 @@ def llm_function(
     def my_func(a: int, b: int, return_type: int):
         return "hi"
     """
+
+    model = cached_model_fn(model_fn)
 
     def function_wrapper(func):
         signature = inspect.signature(func)
@@ -110,15 +119,13 @@ if __name__ == "__main__":
         city: str
         state_code: str
 
-    llm = Llama("../models/phi-2.Q6_K.gguf")
-
     @llm_function(model_kwargs={"max_tokens": -1})
     def my_func(a: int, b: int, c: str = "hi") -> int:
         """docstring {c}"""
 
-    @llm_function(model=llm)
+    @llm_function
     def my_func2(placename: str) -> StructuredName:
-        """Parse the following placename: {placename}"""
+        """Parse the following placename: {placename} into the full city name and state code."""
 
     response, parsed_model = my_func2("NYC.")
 
